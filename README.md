@@ -58,13 +58,43 @@ Gurobi requires a license to run. The free pip-bundled license is **size-limited
 
 #### Option A — Davidson College token server (recommended for Davidson students)
 
-Create the file `~/gurobi.lic` with this single line:
+You must be **physically on Davidson WiFi** (not VPN — the token server is not reachable off-campus).
 
-```
-TOKENSERVER=gurobilicense.davidson.edu
+**Step 1 — Create the license file**
+
+Run the correct command for your OS in your terminal:
+
+```bash
+# macOS / Linux
+echo "TOKENSERVER=gurobilicense.davidson.edu" > ~/gurobi.lic
 ```
 
-This borrows a full unrestricted license from Davidson's server. **You must be on Davidson WiFi or connected via VPN.**
+```powershell
+# Windows (PowerShell)
+"TOKENSERVER=gurobilicense.davidson.edu" | Out-File -FilePath "$env:USERPROFILE\gurobi.lic" -Encoding ascii
+```
+
+**Step 2 — Verify it worked**
+
+With your virtual environment activated, run:
+
+```bash
+python -c "import gurobipy as gp; m = gp.Model(); print('License OK')"
+```
+
+You should see `Set parameter TokenServer to value "gurobilicense.davidson.edu"` in the output, followed by `License OK`. If you see an error, double-check that you are on Davidson WiFi and that the file was created in the right location (`~` = your home directory, e.g. `/Users/yourname/gurobi.lic` on macOS).
+
+**Step 3 — If it still fails**
+
+Check whether a conflicting license file already exists somewhere else:
+
+```bash
+# macOS / Linux
+find ~ -name "gurobi.lic" 2>/dev/null
+echo "GRB_LICENSE_FILE=${GRB_LICENSE_FILE}"
+```
+
+If `GRB_LICENSE_FILE` is set in your environment, it overrides `~/gurobi.lic`. Unset it or point it to the file you just created.
 
 #### Option B — Free academic license (9×9 puzzles only)
 
@@ -88,7 +118,7 @@ Streamlit will print a local URL (usually `http://localhost:8501`). Open it in y
 You are using the default pip license. Follow Step 4 to configure a full license.
 
 **`GurobiError: No server available`** (when using token server)
-You are not on Davidson WiFi or VPN. Connect and try again.
+The token server is only reachable on Davidson's campus WiFi network — VPN does not give access to it. Connect to Davidson WiFi and retry. Also confirm `~/gurobi.lic` contains exactly `TOKENSERVER=gurobilicense.davidson.edu` with no extra spaces or blank lines.
 
 **`ModuleNotFoundError`**
 Make sure your virtual environment is activated and all packages are installed (`pip install streamlit gurobipy pandas numpy matplotlib`).
