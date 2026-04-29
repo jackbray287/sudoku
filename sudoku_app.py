@@ -20,6 +20,25 @@ PAIR_COLOR = {
 }
 PAIRS = [(1, 9), (2, 8), (3, 7), (4, 6), (5, 5)]
 
+CB_PUZZLE = [
+    [13, 0, 0, 0, 0, 8, 0, 0, 0, 0, 9, 0, 0, 0, 0, 4],
+    [0, 11, 0, 0, 0, 0, 10, 0, 0, 0, 0, 7, 8, 0, 0, 0],
+    [0, 0, 1, 0, 0, 0, 0, 4, 13, 0, 0, 0, 0, 14, 0, 0],
+    [0, 0, 0, 3, 2, 0, 0, 0, 0, 15, 0, 0, 0, 0, 12, 0],
+    [1, 0, 0, 0, 0, 14, 0, 0, 0, 0, 7, 0, 0, 0, 0, 2],
+    [0, 15, 0, 0, 0, 0, 8, 0, 0, 0, 0, 3, 6, 0, 0, 0],
+    [0, 0, 11, 0, 0, 0, 0, 6, 15, 0, 0, 0, 0, 16, 0, 0],
+    [0, 0, 0, 7, 10, 0, 0, 0, 0, 13, 0, 0, 0, 0, 8, 0],
+    [15, 0, 0, 0, 0, 16, 0, 0, 0, 0, 3, 0, 0, 0, 0, 8],
+    [0, 1, 0, 0, 0, 0, 4, 0, 0, 0, 0, 13, 2, 0, 0, 0],
+    [0, 0, 7, 0, 0, 0, 0, 8, 5, 0, 0, 0, 0, 12, 0, 0],
+    [0, 0, 0, 5, 6, 0, 0, 0, 0, 11, 0, 0, 0, 0, 4, 0],
+    [11, 0, 0, 0, 0, 2, 0, 0, 0, 0, 13, 0, 0, 0, 0, 12],
+    [0, 9, 0, 0, 0, 0, 16, 0, 0, 0, 0, 15, 10, 0, 0, 0],
+    [0, 0, 13, 0, 0, 0, 0, 14, 9, 0, 0, 0, 0, 6, 0, 0],
+    [0, 0, 0, 15, 8, 0, 0, 0, 0, 3, 0, 0, 0, 0, 14, 0],
+]
+
 # Original Hardcoded Data for Autofill
 H_ORIGINAL = [
     [T, F, N, F, T, N, T, F], [T, F, N, F, F, N, F, T], [F, F, N, F, F, N, F, T],
@@ -262,9 +281,100 @@ def board_html_antisym(sol, spotlight=None):
     )
 
 
+def solve_checkerboard(puzzle):
+    try:
+        m = gp.Model("checkerboard")
+        m.Params.LogToConsole = 0
+        N, BOX = 16, 4
+        NUMS = range(1, N + 1)
+        CELLS = range(N)
+        odd_nums  = list(range(1, N + 1, 2))
+        even_nums = list(range(2, N + 1, 2))
+
+        x = m.addVars(CELLS, CELLS, NUMS, vtype=GRB.BINARY)
+
+        for r in CELLS:
+            for c in CELLS:
+                m.addConstr(gp.quicksum(x[r, c, k] for k in NUMS) == 1)
+        for r in CELLS:
+            for k in NUMS:
+                m.addConstr(gp.quicksum(x[r, c, k] for c in CELLS) == 1)
+        for c in CELLS:
+            for k in NUMS:
+                m.addConstr(gp.quicksum(x[r, c, k] for r in CELLS) == 1)
+        for br in range(0, N, BOX):
+            for bc in range(0, N, BOX):
+                for k in NUMS:
+                    m.addConstr(gp.quicksum(
+                        x[br + dr, bc + dc, k]
+                        for dr in range(BOX) for dc in range(BOX)
+                    ) == 1)
+
+        for r in CELLS:
+            for c in CELLS:
+                if (r + c) % 2 == 0:
+                    m.addConstr(gp.quicksum(x[r, c, k] for k in odd_nums) == 1)
+                else:
+                    m.addConstr(gp.quicksum(x[r, c, k] for k in even_nums) == 1)
+
+        for r in CELLS:
+            for c in CELLS:
+                if puzzle[r][c] != 0:
+                    m.addConstr(x[r, c, puzzle[r][c]] == 1)
+
+        m.optimize()
+        if m.Status == GRB.OPTIMAL:
+            NUMS_L = list(NUMS)
+            return [
+                [next(k for k in NUMS_L if x[r, c, k].X > 0.5) for c in CELLS]
+                for r in CELLS
+            ]
+        return None
+    except Exception as e:
+        st.error(f"Gurobi error: {e}")
+        return None
+
+
+def board_html_checkerboard(sol, given=None):
+    N, BOX = 16, 4
+    rows = []
+    for r in range(N):
+        cells = []
+        for c in range(N):
+            d = sol[r][c]
+            is_given = given is not None and given[r][c] != 0
+            if (r + c) % 2 == 0:
+                bg = "#c8860a" if is_given else "#f5d87a"   # amber — odd cells
+                fg = "#fff"   if is_given else "#7a4f00"
+            else:
+                bg = "#1a6aa8" if is_given else "#aed6f1"   # blue — even cells
+                fg = "#fff"   if is_given else "#154360"
+
+            thick = "2px solid #111"
+            thin  = "1px solid #aaa"
+            bt = thick if r % BOX == 0 else thin
+            bb = thick if r % BOX == BOX - 1 else thin
+            bl = thick if c % BOX == 0 else thin
+            br = thick if c % BOX == BOX - 1 else thin
+            fw = "bold" if is_given else "normal"
+            cells.append(
+                f'<td style="width:36px;height:36px;text-align:center;vertical-align:middle;'
+                f'font-size:13px;font-weight:{fw};color:{fg};background:{bg};'
+                f'border-top:{bt};border-bottom:{bb};border-left:{bl};border-right:{br};">'
+                f'{d}</td>'
+            )
+        rows.append(f"<tr>{''.join(cells)}</tr>")
+    return (
+        '<div style="display:flex;justify-content:center;margin:12px 0;overflow-x:auto;">'
+        '<table style="border-collapse:collapse;">'
+        + "".join(rows)
+        + "</table></div>"
+    )
+
+
 # ─── UI Layout ────────────────────────────────────────────────────────────────
 
-problem = st.radio("Select a problem:", ["Prime Sudoku", "Naked Greater-Than Sudoku", "Antisymmetric Sudoku"], horizontal=True)
+problem = st.radio("Select a problem:", ["Prime Sudoku", "Naked Greater-Than Sudoku", "Antisymmetric Sudoku", "Checkerboard 16×16 Sudoku"], horizontal=True)
 st.divider()
 
 if problem == "Naked Greater-Than Sudoku":
@@ -283,7 +393,7 @@ if problem == "Naked Greater-Than Sudoku":
 
     btn_col, _ = st.columns([1, 5])
     with btn_col:
-        if st.button("Reset to Original", key="reset_naked"):
+        if st.button("Default Puzzle", key="reset_naked"):
             for i in range(9):
                 for j in range(8):
                     st.session_state[f"h_sym_{i}_{j}"] = H_SYMBOLS[H_ORIGINAL[i][j]]
@@ -502,4 +612,81 @@ elif problem == "Antisymmetric Sudoku":
 
         if st.button("Clear Board", key="clear_antisym"):
             del st.session_state["asol"]
+            st.rerun()
+
+elif problem == "Checkerboard 16×16 Sudoku":
+    st.subheader("Checkerboard 16×16 Sudoku")
+    st.write(
+        "A 16×16 sudoku (digits 1–16, with 4×4 boxes) plus a checkerboard parity rule: "
+        "**amber cells** must contain odd numbers, **blue cells** must contain even numbers. "
+        "Edit the clues below or use the default puzzle, then click **Solve**."
+    )
+
+    rc1, rc2, _ = st.columns([1, 1, 5])
+    with rc1:
+        if st.button("Load default puzzle", key="cb_load"):
+            st.session_state["cb_df"] = pd.DataFrame(
+                CB_PUZZLE,
+                columns=[str(c + 1) for c in range(16)],
+                index=[str(r + 1) for r in range(16)],
+            )
+            st.session_state.pop("cb_sol", None)
+            st.rerun()
+    with rc2:
+        if st.button("Clear all clues", key="cb_clear_clues"):
+            st.session_state["cb_df"] = pd.DataFrame(
+                [[0] * 16 for _ in range(16)],
+                columns=[str(c + 1) for c in range(16)],
+                index=[str(r + 1) for r in range(16)],
+            )
+            st.session_state.pop("cb_sol", None)
+            st.rerun()
+
+    if "cb_df" not in st.session_state:
+        st.session_state["cb_df"] = pd.DataFrame(
+            CB_PUZZLE,
+            columns=[str(c + 1) for c in range(16)],
+            index=[str(r + 1) for r in range(16)],
+        )
+
+    col_cfg_cb = {
+        str(c + 1): st.column_config.NumberColumn(
+            label=str(c + 1), min_value=0, max_value=16, step=1, default=0
+        )
+        for c in range(16)
+    }
+
+    edited_cb = st.data_editor(
+        st.session_state["cb_df"],
+        column_config=col_cfg_cb,
+        use_container_width=True,
+        hide_index=False,
+        key="cb_editor",
+        height=600,
+    )
+
+    if st.button("Solve Puzzle", type="primary", use_container_width=True, key="btn_cb"):
+        given_cb = [[int(edited_cb.iloc[r, c]) for c in range(16)] for r in range(16)]
+        st.session_state["cb_given"] = given_cb
+        st.session_state.pop("cb_sol", None)
+        with st.spinner("Solving 16×16 checkerboard sudoku with Gurobi..."):
+            sol_cb = solve_checkerboard(given_cb)
+        if sol_cb:
+            st.session_state["cb_sol"] = sol_cb
+        else:
+            st.error("No solution found for these clues.")
+
+    if "cb_sol" in st.session_state:
+        st.divider()
+        st.success("Solution found!")
+        st.markdown(
+            board_html_checkerboard(
+                st.session_state["cb_sol"],
+                given=st.session_state.get("cb_given"),
+            ),
+            unsafe_allow_html=True,
+        )
+        st.caption("Bold darker cells are the given clues. Amber = odd, blue = even.")
+        if st.button("Clear Solution", key="clear_cb"):
+            del st.session_state["cb_sol"]
             st.rerun()
